@@ -193,6 +193,13 @@ public class EntryPoint
             return;
         }
 
+        // The whole protocol is one StarRail.proto, so the first access to any message descriptor builds the
+        // descriptors of all ~5,000 messages at once, which takes several seconds. Left lazy, that cost landed on
+        // the first login after every start: on PlayerGetTokenScRsp when packet logging is on (the logger formats
+        // packets as JSON) and on GetBasicInfoScRsp otherwise (ProtoPresence walks descriptors). Build them while
+        // the resources load instead; startup waits for them below, before logins are accepted.
+        var protoDescriptorWarmUp = Task.Run(() => _ = March7thHoney.Proto.StarRailReflection.Descriptor);
+
         HandlerManager.Init();
         if (ConfigManager.Config.GameServer.UsePacketEncryption)
         {
@@ -493,6 +500,7 @@ public class EntryPoint
 
         if (args.Contains("--upgrade-database")) DatabaseHelper.UpgradeDatabase();
 
+        await protoDescriptorWarmUp;
         var elapsed = DateTime.Now - time;
         Logger.Info(I18NManager.Translate("Server.ServerInfo.ServerStarted",
             Math.Round(elapsed.TotalSeconds, 2).ToString(CultureInfo.InvariantCulture)));
